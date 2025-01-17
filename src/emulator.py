@@ -11,6 +11,7 @@ class Emulator:
         self.reg = 1e-15
         self.pois = range(30,45)
         self.n_pois = len(self.pois)
+        self.generated_dir = generated_dir
         self.topofile = topofile
         self.topomask = topomask
     
@@ -26,6 +27,8 @@ class Emulator:
             self.model = self.create_model()
             self.model_file = os.path.join(self.rundir, "model.h5")
 
+        self.logdir = os.path.join(generated_dir, "logs", os.path.split(self.rundir)[-1])
+    
     def create_model(self):
         reg = 1e-5 # Parameter penalization factor.
         
@@ -53,47 +56,66 @@ class Emulator:
         model = models.Sequential([encode, decode])
         return model
 
-    def train_model(self, datadir, scenarios_file, batch_size, epochs):
-        
-        with open(scenarios_file, 'r') as file:
+    def train_model(self, train_dir, train_scenarios, validation_dir, validation_scenarios, batch_size=32, epochs=30):
+
+        with open(train_scenarios, 'r') as file:
             nr_of_scenarios = sum(1 for line in file if line.strip())
-        print(f"Number of scenarios: {nr_of_scenarios}")
+            print(f"Number of training scenarios: {nr_of_scenarios}")
+
+        data_config = {
+            "train": {
+                "scenarios_file": train_scenarios,
+                "datadir": train_dir
+            },
+            "val": { 
+                "scenarios_file": validation_scenarios,
+                "datadir": validation_dir
+            }
+        }
         
-        reader = DataReader(
-            scenarios_file=scenarios_file,
-            pois=self.pois,
-            datadir=datadir,
-            topofile=self.topofile,
-            topo_mask_file=self.topomask,
-            shuffle_on_load=False, 
-            reload=False
+        readers = {}
+        for key, config in data_config.items():
+            readers[key] = DataReader( 
+                scenarios_file=config["scenarios_file"],
+                pois=self.pois,
+                datadir=config["datadir"],
+                topofile=self.topofile,
+                topo_mask_file=self.topomask,
+                shuffle_on_load=False, 
+                reload=False
+            )
+        
+
+        datasets = {}
+        # Create datasets from generators
+        output_signature = (
+            tf.TensorSpec(shape=(self.n_pois, 481), dtype=tf.int32),
+            tf.TensorSpec(shape=(readers["train"].topo_mask.sum()), dtype=tf.int32)
         )
+        datasets["train"] = tf.data.Dataset.from_generator(
+                generator=readers["train"].generator,
+                output_signature=output_signature
+        ).cache().shuffle(buffer_size=nr_of_scenarios).batch(batch_size)
         
-        log_dir = "logs/fit/" + tf.timestamp().numpy().astype(str)
-        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-
-        # Create dataset from generator
-        dataset = tf.data.Dataset.from_generator(
-                generator=reader.generator,
-                output_signature=(
-                        tf.TensorSpec(shape=(self.n_pois, 481), dtype=tf.int32),
-                        tf.TensorSpec(shape=(reader.topo_mask.sum()), dtype=tf.int32)
-                )
-        ).cache().shuffle(buffer_size=nr_of_scenarios)
-        batched_dataset = dataset.batch(batch_size)#.prefetch(tf.data.AUTOTUNE)
-
+        datasets["val"] = tf.data.Dataset.from_generator(
+                generator=readers["val"].generator,
+                output_signature=output_signature
+        ).cache().batch(batch_size)
 
         # Compile the model with a loss function and optimizer
         self.model.compile(
-            optimizer=optimizers.Adam(learning_rate=0.001, 
-                                                     beta_1=0.9, 
-                                                     beta_2=0.999), 
+            optimizer=optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999), 
             loss="mse",
             metrics=['mse']
         )
 
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=self.logdir, histogram_freq=1)
+        
         # Fit the model
-        self.history = self.model.fit(batched_dataset, epochs=epochs, callbacks=[tensorboard_callback])
+        self.history = self.model.fit(datasets["train"], 
+                                      epochs=epochs, 
+                                      callbacks=[tensorboard_callback],
+                                      validation_data=datasets["val"])
         
         hist_df = DataFrame(self.history.history) 
         with open(os.path.join(self.rundir, "train_summary.csv"), "w") as outfile:

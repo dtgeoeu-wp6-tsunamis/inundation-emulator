@@ -26,13 +26,13 @@ def create_file_mapping(folder_path):
     
     print(f"File mapping created successfully in {output_file}")
 
-def download_dataset(filename, from_folder, to_folder):
+def download_dataset(filename, from_folder, to_folder, max_number_of_scenarios = None):
     with open("/home/ebr/projects/inundation-emulator/article_data/file_mapping.json") as file:
         filemap = json.load(file)
     scenarios = []
     with open(filename, 'r') as file:
         # Read each line in the file
-        for line in file:
+        for scenario_nr, line in enumerate(file):
             line = line.strip()
             scenario = line.split("/")[1]
             scenarios.append(scenario + "\n")
@@ -42,6 +42,9 @@ def download_dataset(filename, from_folder, to_folder):
                 if f.startswith(line.split("/")[1]):
                     print(f)
                     shutil.copy(os.path.join(sub_dir_from_folder, f), to_folder)
+            if max_number_of_scenarios and scenario_nr+1 >= max_number_of_scenarios:
+                break
+
     with open(os.path.join(to_folder, "scenarios.txt"), "w") as f:
         f.writelines(scenarios)
 
@@ -50,13 +53,18 @@ def main():
     # Source folder
     folder_path = "/mnt/NGI_disks/ebr/T/Tsunami/PTHA2020_runs_UMA"
     # Local folder
-    to_folder = "/home/ebr/data/PTHA2020_runs_UMA/train_591"
+    #to_folder = "/home/ebr/data/PTHA2020_runs_UMA/train_591"
+    to_folder = "/home/ebr/data/PTHA2020_runs_UMA/test"
+    
     create_file_mapping(folder_path)
     # Scenarios (to copy)
-    filename="/home/ebr/projects/inundation-emulator/article_data/train_591/train.txt"
+    #filename="/home/ebr/projects/inundation-emulator/article_data/train_591/train.txt"
+    filename="/home/ebr/projects/inundation-emulator/article_data/bottom_UMAPS_shuf.txt"
+    
     download_dataset(filename,
                      folder_path,
-                     to_folder)
+                     to_folder,
+                     max_number_of_scenarios=100)
     
 if __name__ == "__main__":
     main()
