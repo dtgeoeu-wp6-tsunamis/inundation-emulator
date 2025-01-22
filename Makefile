@@ -5,11 +5,11 @@
 
 emulator:
 	@echo "Creating emulator..."
-	python create_emulator.py  # Adjust with the actual command
+	poetry run python create_emulator.py 
 
-run_tensorboard:
+tensorboard:
 	@echo "Starting TensorBoard..."
-	poetry run tensorboard --logdir logs --port 6006
+	poetry run tensorboard --logdir generated/logs --port 6006
 
 clean:
 	@echo "Cleaning runs and logs..."

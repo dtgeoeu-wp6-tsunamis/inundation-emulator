@@ -11,8 +11,7 @@ import os
 Python generator delivering data for tensorflow dataset.
 """
 
-Scenario = namedtuple('Scenario', ['eta',
-                                   'flow_depth'])
+Scenario = namedtuple('Scenario', ['eta', 'flow_depth', 'scenario'])
 
 
 class DataReader:
@@ -23,7 +22,8 @@ class DataReader:
                  datadir, 
                  topofile,
                  topo_mask_file=None, 
-                 shuffle_on_load=False, 
+                 shuffle_on_load=False,
+                 target=True,
                  reload=False):
         
         self.scenarios_file = scenarios_file
@@ -33,6 +33,7 @@ class DataReader:
         self.topo_mask_file = topo_mask_file
         self.shuffle_on_load = shuffle_on_load
         self.reload = reload
+        self.target = target
         self.lines = None
 
         with Dataset(self.topofile, 'r') as ds:
@@ -68,32 +69,36 @@ class DataReader:
                 self.load()
             
             flow_depth, eta, deformed_topography = self.get_sample(line.strip())
-            scenario = Scenario(eta=eta, flow_depth=flow_depth)
+            scenario = Scenario(eta=eta, flow_depth=flow_depth, scenario=line.strip())
             yield scenario
 
     def get_sample(self, scenario):
-        filename_CT = os.path.join(self.datadir, f"{scenario}_CT_10m.nc")
         filename_ts = os.path.join(self.datadir, f"{scenario}_ts.nc")
+        filename_CT = os.path.join(self.datadir, f"{scenario}_CT_10m.nc")
         
         # Initialize the eta array with the proper shape and type
-        #eta = np.empty(self.in_dims, dtype=np.float32)
         with Dataset(filename_ts) as ds:
             eta = ds.variables["eta"][:, self.pois]
-
-        # Initialize flow_depth and deformed_topography
-        flow_depth = np.zeros(self.topography.shape)
         
-        with Dataset(filename_CT) as ds:
-            max_height = ds.variables["max_height"][:,:]
-            deformation = ds.variables["deformation"][:,:]
-            deformed_topography = self.topography - deformation
-
-            # Create a mask and calculate flow_depth
-            mask = (self.topography > 0) & (max_height != np.ma.masked) & (max_height > deformed_topography)
-            flow_depth[mask] = (max_height - deformed_topography)[mask]
+        if self.target:
+            # Initialize flow_depth and deformed_topography
+            flow_depth = np.zeros(self.topography.shape)
             
-            if self.topo_mask_file:
-                flow_depth = flow_depth[self.topo_mask]
+            # Assign values to flow depth.
+            with Dataset(filename_CT) as ds:
+                max_height = ds.variables["max_height"][:,:]
+                deformation = ds.variables["deformation"][:,:]
+                deformed_topography = self.topography - deformation
+
+                # Create a mask and calculate flow_depth
+                mask = (self.topography > 0) & (max_height != np.ma.masked) & (max_height > deformed_topography)
+                flow_depth[mask] = (max_height - deformed_topography)[mask]
                 
+                if self.topo_mask_file:
+                    flow_depth = flow_depth[self.topo_mask]
+        else:
+            # Return empty arrays if not loaded.
+            flow_depth, deformed_topography = np.zeros(0), np.zeros(0)
+        
         return flow_depth, eta.T, deformed_topography
 
