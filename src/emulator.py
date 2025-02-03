@@ -1,67 +1,86 @@
 from keras import layers, models, Input, regularizers, optimizers
+import json
 from src.data_reader import DataReader
-from datetime import datetime
 import tensorflow as tf
 import os
 import csv
 import numpy as np
 import xarray as xr
 from pandas import DataFrame
+from src.logger_setup import get_logger
 
 class Emulator:
-    def __init__(self, generated_dir, topofile, topomask, rundir=None):
-        self.reg = 1e-15
+    def __init__(self, generated_dir, rundir, epoch_checkpoint=None):
+        self.rundir=rundir
+        self.generated_dir = generated_dir
+        self.topofile = os.path.join(self.rundir, "topography.grd") 
+        self.topomask_file = os.path.join(rundir, "topomask.npy")
+        self.grid_info_file = os.path.join(self.rundir, "grid_info.json")
+        with open(self.grid_info_file) as f:
+            self.grid_info = json.load(f)
+        self.topomask = np.load(self.topomask_file)
+        
+        # Input-Output dimensions 
+        # Should be stored in a config file created by datareader.
         self.pois = range(30,45)
         self.n_pois = len(self.pois)
-        self.generated_dir = generated_dir
-        self.topofile = topofile
-        self.topomask = topomask
-    
-        # Create rundir if does not exist. Else load model.
-        if rundir:
-            self.rundir=rundir
-            self.model_file = os.path.join(rundir, "model.h5")
+        self.input_time_steps = 481
+        self.grid_lat = self.grid_info['dimensions']['grid_lat']
+        self.grid_lon = self.grid_info['dimensions']['grid_lon']
+        self.nr_pixel_out = self.topomask.sum()
+
+        self.id=os.path.split(rundir)[-1]
+        if epoch_checkpoint:
+            self.model_file = os.path.join(self.rundir, "model_checkpoints", f"model_epoch_{epoch_checkpoint}.keras")
+        else:
+            self.model_file = os.path.join(rundir, "model.keras")
+        if os.path.isfile(self.model_file):
             self.model = self.load_model()
         else:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            self.rundir = os.path.join(generated_dir, f"emulator_{timestamp}")
-            os.makedirs(self.rundir, exist_ok=True)
             self.model = self.create_model()
-            self.model_file = os.path.join(self.rundir, "model.h5")
-
+        
+        self.logger = get_logger(__name__, self.rundir)
+        
+        # For tensorboard
         self.logdir = os.path.join(generated_dir, "logs", os.path.split(self.rundir)[-1])
+        
+        # Write model config to log.
+        self.logger.info("Encoder:")
+        self.model.layers[0].summary(print_fn=self.logger.info)
+        self.logger.info("Decoder:")
+        self.model.layers[1].summary(print_fn=self.logger.info)
     
     def create_model(self):
         #reg = 1e-5 # Parameter penalization factor.
-        alpha = 0.01
+        alpha = 0.01 # Leaky relu parameter ().
         
         encode = models.Sequential([
-            Input(shape=(self.n_pois, 481)),
-            layers.Reshape((15, 481, 1)),  # Optionally add channels later
-            layers.Conv2D(8, (3, 3), strides=(1, 1), use_bias=False),
+            Input(shape=(self.n_pois, self.input_time_steps)),
+            layers.Reshape((15, self.input_time_steps, 1)),  # Optionally add channels later
+            layers.Conv2D(8, (3, 3), strides=(1, 1), activation="linear", use_bias=False),
             layers.LeakyReLU(alpha=alpha),
             layers.MaxPooling2D(pool_size=(3, 3), strides=(1, 2)),
-            layers.Conv2D(16, (3, 5), strides=(1, 1), use_bias=False),
+            layers.Conv2D(16, (3, 5), strides=(1, 1), activation="linear", use_bias=False),
             layers.LeakyReLU(alpha=alpha),
             layers.MaxPooling2D(pool_size=(3, 5), strides=(2, 3)),
-            layers.Conv2D(32, (3, 5), strides=(1, 1), padding='same', use_bias=False),
+            layers.Conv2D(32, (3, 5), strides=(1, 1), activation="linear", padding='same', use_bias=False),
             layers.LeakyReLU(alpha=alpha),
             layers.MaxPooling2D(pool_size=(3, 5), strides=(2, 3)),
-            layers.Conv2D(32, (1, 1), strides=(1, 1), use_bias=True),
+            layers.Conv2D(32, (1, 1), strides=(1, 1), activation="linear", use_bias=True),
             layers.LeakyReLU(alpha=alpha),
             layers.Flatten(),
             layers.Dropout(0.5),
-            layers.Dense(8, use_bias=True),
+            layers.Dense(16, activation="linear", use_bias=True),
             layers.LeakyReLU(alpha=alpha),
         ])
         
         # Decoder
         decode = models.Sequential([
-            layers.Dense(8, use_bias=True),
+            layers.Dense(16, activation="linear", use_bias=True),
             layers.LeakyReLU(alpha=alpha),
-            layers.Dense(64, use_bias=True),
+            layers.Dense(64, activation="linear", use_bias=True),
             layers.LeakyReLU(alpha=alpha),
-            layers.Dense(418908, use_bias=True),
+            layers.Dense(self.nr_pixel_out, activation="linear", use_bias=True),
             layers.LeakyReLU(alpha=alpha),
         ])
         
@@ -70,11 +89,11 @@ class Emulator:
         return model
 
     def train_model(self, train_dir, train_scenarios, validation_dir, validation_scenarios, 
-                    batch_size=32, epochs=30, l2_callback_frequency=30, save_model_frequency=50):
+                    batch_size=20, epochs=600, l2_callback_frequency=100, save_model_frequency=200):
 
         with open(train_scenarios, 'r') as file:
             nr_of_scenarios = sum(1 for line in file if line.strip())
-            print(f"Number of training scenarios: {nr_of_scenarios}")
+            self.logger.info(f"Number of training scenarios: {nr_of_scenarios}")
 
         data_config = {
             "train": {
@@ -90,21 +109,22 @@ class Emulator:
         readers = {}
         for key, config in data_config.items():
             readers[key] = DataReader( 
+                rundir=self.rundir,
                 scenarios_file=config["scenarios_file"],
-                pois=self.pois,
                 datadir=config["datadir"],
-                topofile=self.topofile,
-                topo_mask_file=self.topomask,
+                pois=self.pois,
                 shuffle_on_load=False, 
                 reload=False
             )
+        readers["train"].store_grid_info()
+        readers["train"].save_mask
         
         datasets = {}
         # Create datasets from generators
         output_signature = (
-            tf.TensorSpec(shape=(self.n_pois, 481), dtype=tf.int32),                # eta
-            tf.TensorSpec(shape=(readers["train"].topo_mask.sum()), dtype=tf.int32),# flow_depth
-            tf.TensorSpec(shape=(), dtype=tf.string)                                # scenario
+            tf.TensorSpec(shape=(self.n_pois, self.input_time_steps), dtype=tf.float32),        # eta
+            tf.TensorSpec(shape=(self.nr_pixel_out), dtype=tf.float32),                         # flow_depth
+            tf.TensorSpec(shape=(), dtype=tf.string)                                            # scenario
         )
         
         datasets["train"] = tf.data.Dataset.from_generator(
@@ -134,13 +154,16 @@ class Emulator:
             callback_frequency=l2_callback_frequency,
             output_csv=os.path.join(self.rundir, 'l2_metrics.csv')
         )
-        save_model_callback = SaveModelEveryNEpochs(self.rundir, n_epochs=save_model_frequency)
-
+        save_model_callback = SaveModelEveryNEpochs(self.rundir, logger=self.logger, n_epochs=save_model_frequency)
+        logger_callback = LoggingCallback(self.logger)
         
         # Fit the model
         self.history = self.model.fit(datasets["train"].map(lambda x, y, _: (x, y)).shuffle(buffer_size=nr_of_scenarios).batch(batch_size), 
                                       epochs=epochs, 
-                                      callbacks=[tensorboard_callback, l2_callback, save_model_callback],
+                                      callbacks=[tensorboard_callback, 
+                                                 l2_callback, 
+                                                 save_model_callback, 
+                                                 logger_callback],
                                       validation_data=datasets["val"].map(lambda x, y, _: (x, y)).batch(batch_size))
         
         hist_df = DataFrame(self.history.history) 
@@ -153,22 +176,22 @@ class Emulator:
         
         with open(scenarios_file, 'r') as file:
             nr_of_scenarios = sum(1 for line in file if line.strip())
-            print(f"Number of scenarios for prediction: {nr_of_scenarios}")
+            self.logger.info(f"Number of scenarios for prediction: {nr_of_scenarios}")
         
         reader = DataReader( 
                 scenarios_file=scenarios_file,
                 pois=self.pois,
                 datadir=input_dir,
                 topofile=self.topofile,
-                topo_mask_file=self.topomask,
+                topo_mask_file=self.topomask_file,
                 shuffle_on_load=False,
                 target=False,
                 reload=False
         )
         
         output_signature = (
-            tf.TensorSpec(shape=(self.n_pois, 481), dtype=tf.int32),                # eta
-            tf.TensorSpec(shape=(), dtype=tf.int32),                                # No flow_depth
+            tf.TensorSpec(shape=(self.n_pois, self.input_time_steps), dtype=tf.float32),                # eta
+            tf.TensorSpec(shape=(), dtype=tf.float32),                                # No flow_depth
             tf.TensorSpec(shape=(), dtype=tf.string)                                # scenario
         )
         
@@ -177,6 +200,7 @@ class Emulator:
                 output_signature=output_signature
         )
 
+        
         for x, scenario_id in dataset:
             # Make predictions
             #TODO: Use CT_mask..
@@ -202,13 +226,16 @@ class Emulator:
 
             # Save to NetCDF
             data.to_netcdf(file_path)
-            print(f"Saved predictions for scenario '{scenario_id_str}' to {file_path}")
+            self.logger.info(f"Saved predictions for scenario '{scenario_id_str}' to {file_path}")
             
             #pred_val = conv_model.predict(x=datasets.batch(40))
             #target_val = readers['validate'].get_targets()
 
-    def load_model(self):
-        return(models.load_model(self.model_file))
+    def load_model(self, model_file=None):
+        if model_file:
+            return(models.load_model(model_file))
+        else:
+            return(models.load_model(self.model_file))
 
     def save_model(self):
         self.model.save(self.model_file)
@@ -282,7 +309,7 @@ class L2MetricsCallback(tf.keras.callbacks.Callback):
 
 
 class SaveModelEveryNEpochs(tf.keras.callbacks.Callback):
-    def __init__(self, rundir, n_epochs=100):
+    def __init__(self, rundir, logger, n_epochs=100):
         """
         Callback to save the model every `n_epochs`.
 
@@ -292,6 +319,7 @@ class SaveModelEveryNEpochs(tf.keras.callbacks.Callback):
         """
         super().__init__()
         self.save_path = os.path.join(rundir, "model_checkpoints")
+        self.logger = logger
         self.n_epochs = n_epochs
 
         # Ensure the save directory exists
@@ -302,6 +330,40 @@ class SaveModelEveryNEpochs(tf.keras.callbacks.Callback):
         Save the model every `n_epochs`.
         """
         if (epoch + 1) % self.n_epochs == 0:
-            model_filename = os.path.join(self.save_path, f"model_epoch_{epoch + 1}.h5")
+            model_filename = os.path.join(self.save_path, f"model_epoch_{epoch + 1}.keras")
             self.model.save(model_filename)
-            print(f"Model saved at: {model_filename}")
+            self.logger.info(f"Model saved at: {model_filename}")
+
+
+class LoggingCallback(tf.keras.callbacks.Callback):
+    def __init__(self, logger):
+        """
+        Custom callback to log Keras training progress using a logger.
+
+        Args:
+            logger (logging.Logger): The logger instance to send training logs to.
+        """
+        super().__init__()
+        self.logger = logger
+
+    def on_epoch_end(self, epoch, logs=None):
+        """
+        Logs metrics at the end of each epoch.
+        """
+        if logs is not None:
+            log_message = f"Epoch {epoch + 1}: " + ", ".join(
+                [f"{key}={value:.4f}" for key, value in logs.items()]
+            )
+            self.logger.info(log_message)
+
+    def on_train_begin(self, logs=None):
+        """
+        Logs the start of training.
+        """
+        self.logger.info("Training started.")
+
+    def on_train_end(self, logs=None):
+        """
+        Logs the end of training.
+        """
+        self.logger.info("Training completed.")

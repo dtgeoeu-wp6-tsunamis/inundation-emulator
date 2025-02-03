@@ -1,5 +1,13 @@
 # inundation-emulator
-Site specific emulator for tsunami run-up simulations.
+Site specific emulator for tsunami run-up simulations. This repository contains a python implementation using [Tensorflow](https://www.tensorflow.org/) of the neural network developped in [Machine learning emulation of high resolution inundation maps](https://doi.org/10.1093/gji/ggae151).
+
+The application of the code has to be carried out in two steps:
+
+1. (Preparation) First the model has to be trained for the specific site. To this end a suitably selected training set of sufficient size is needed.
+
+1. (Operation) The trained model may be applied for predictions.
+
+
 
 # Data folder.
 T:\Tsunami\PTHA2020_runs_UMA

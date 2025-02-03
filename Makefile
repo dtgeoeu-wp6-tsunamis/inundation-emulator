@@ -12,6 +12,6 @@ tensorboard:
 	poetry run tensorboard --logdir generated/logs --port 6006
 
 clean:
-	@echo "Cleaning runs and logs..."
+	@echo "Cleaning runs (models) and tensorboard logs..."
 	rm -rf generated/*
 	@echo "Cleanup done."

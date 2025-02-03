@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import numpy as np
+from src.logger_setup import get_logger
 
 # Example usage
 def main():
@@ -21,6 +22,7 @@ class Plotter:
         self.output_dir = os.path.join(self.rundir, "plots")
         self.l2_metrics_file = os.path.join(self.rundir, "l2_metrics.csv")  # Path to the metrics CSV file
         self.summary_file = os.path.join(self.rundir, "train_summary.csv")
+        self.logger = get_logger(__name__, self.rundir)
         
         # Ensure the output directory exists
         os.makedirs(self.output_dir, exist_ok=True)
@@ -82,7 +84,7 @@ class Plotter:
             plot_path = os.path.join(self.output_dir, f"scatter_epoch_{epoch}.png")
             plt.savefig(plot_path)
             plt.close()
-            print(f"Saved scatterplot for Epoch {epoch} at {plot_path}")
+            self.logger.info(f"Saved scatterplot for Epoch {epoch} at {plot_path}")
 
 
     def plot_training_history(self):
@@ -113,7 +115,9 @@ class Plotter:
         plt.ylabel("Loss")
         plt.legend()
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-        plt.savefig(os.path.join(self.rundir,"train_summary_loss.png"))
+        filename_loss = os.path.join(self.rundir,"train_summary_loss.png")
+        plt.savefig(filename_loss)
+        self.logger.info(f"Saved train loss plot: {filename_loss}")
         plt.close()
 
         # Plot MSE metrics
@@ -126,7 +130,9 @@ class Plotter:
         plt.ylabel("MSE")
         plt.legend()
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-        plt.savefig(os.path.join(self.rundir,"train_summary_mse.png"))
+        filename_mse = os.path.join(self.rundir,"train_summary_mse.png")
+        plt.savefig(filename_mse)
+        self.logger.info(f"Saved train mse plot: {filename_mse}")
         plt.close()
 
 
