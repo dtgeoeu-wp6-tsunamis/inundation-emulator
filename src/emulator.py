@@ -1,13 +1,13 @@
-from keras import layers, models, Input, regularizers, optimizers
+from keras import layers, models, Input, optimizers
 import json
 from src.data_reader import DataReader
 import tensorflow as tf
 import os
 import csv
 import numpy as np
-import xarray as xr
 from pandas import DataFrame
 from src.logger_setup import get_logger
+from netCDF4 import Dataset
 
 class Emulator:
     def __init__(self, generated_dir, rundir, epoch_checkpoint=None):
@@ -170,20 +170,24 @@ class Emulator:
         with open(os.path.join(self.rundir, "train_summary.csv"), "a") as outfile:
             hist_df.to_csv(outfile)
 
-    def predict(self, scenarios_file, input_dir, output_dir):
-        # Ensure the output directory exists
+    def predict(self, scenarios_file, input_dir, output_dir, batch_size=100):
+        """Make predictions and write each to netcdf file.
+        """
         os.makedirs(output_dir, exist_ok=True)
+        
+        # load the stored grid information
+        with open(self.grid_info_file, "r") as f:
+            grid_info = json.load(f)
         
         with open(scenarios_file, 'r') as file:
             nr_of_scenarios = sum(1 for line in file if line.strip())
             self.logger.info(f"Number of scenarios for prediction: {nr_of_scenarios}")
         
-        reader = DataReader( 
+        reader = DataReader(
+                rundir=self.rundir, 
                 scenarios_file=scenarios_file,
-                pois=self.pois,
                 datadir=input_dir,
-                topofile=self.topofile,
-                topo_mask_file=self.topomask_file,
+                pois=self.pois,
                 shuffle_on_load=False,
                 target=False,
                 reload=False
@@ -191,45 +195,55 @@ class Emulator:
         
         output_signature = (
             tf.TensorSpec(shape=(self.n_pois, self.input_time_steps), dtype=tf.float32),                # eta
-            tf.TensorSpec(shape=(), dtype=tf.float32),                                # No flow_depth
+            tf.TensorSpec(shape=(0,), dtype=tf.float32),                                # No flow_depth
             tf.TensorSpec(shape=(), dtype=tf.string)                                # scenario
         )
         
         dataset = tf.data.Dataset.from_generator(
                 generator=reader.generator,
                 output_signature=output_signature
-        )
+        ).batch(batch_size, drop_remainder=False)
 
+        # Make predictions
+        preds = np.zeros((batch_size, *self.topomask.shape))
+        flow_depths = np.zeros((batch_size, *self.topomask.shape))
+
+        for eta, flow_depth, scenario_id in dataset.take(-1):
+            db = eta.shape[0] # Dynamic batch size
+            preds[:db, self.topomask] = self.model(eta, training=False)
+            #flow_depths[:db,self.topomask] = flow_depth
+            self.write_predictions(preds[:db], scenario_id, grid_info, output_dir)
         
-        for x, scenario_id in dataset:
-            # Make predictions
-            #TODO: Use CT_mask..
-            y_pred = self.model.predict(x, verbose=0)
-
-            # Convert to NumPy for easier manipulation
-            y_pred_np = y_pred.numpy() if hasattr(y_pred, 'numpy') else y_pred
-
+    def write_predictions(self, preds, scenario_id, grid_info, output_dir):
+        """ Write predictions to file.
+        """
+        for scenario, pred in zip(scenario_id, preds):
             # Create a NetCDF file for each scenario
-            scenario_id_str = scenario_id.numpy().decode('utf-8')  # Decode scenario_id to string
-            file_path = os.path.join(output_dir, f"{scenario_id_str}.nc")
-
-            # Create an xarray DataArray for the prediction
-            data = xr.DataArray(
-                y_pred_np,
-                dims=["dim_0", "dim_1"],  # Update these based on the shape of your predictions
-                name="prediction",
-            )
-
-            # Add metadata or attributes if necessary
-            data.attrs["scenario"] = scenario_id_str
-            data.attrs["description"] = "Model predictions for scenario"
-
-            # Save to NetCDF
-            data.to_netcdf(file_path)
-            self.logger.info(f"Saved predictions for scenario '{scenario_id_str}' to {file_path}")
+            scenario_id_str = scenario.numpy().decode('utf-8') 
+            pred_file = os.path.join(output_dir, f"{scenario_id_str}_CT_10m_PR.nc")
             
-            #pred_val = conv_model.predict(x=datasets.batch(40))
-            #target_val = readers['validate'].get_targets()
+            with Dataset(pred_file, mode='w', format="NETCDF4") as dst:
+                dst.scenario = scenario_id_str
+                dst.model_id = self.id
+                dst.description = "Predicted maximal flow depth."
+                
+                for dim_name, dim_size in grid_info["dimensions"].items():
+                    dst.createDimension(dim_name, dim_size)
+                
+                for var_name, var_info in grid_info["variables"].items():
+                    dst_var = dst.createVariable(var_name, np.dtype(var_info["datatype"]), var_info["dimensions"])
+                    for attr, value in var_info["attributes"].items():
+                        dst_var.setncattr(attr, value)
+                    dst_var[:] = np.array(var_info["data"])
+                
+                # Add predicted
+                prediction = dst.createVariable("predicted", "f4", ("grid_lat", "grid_lon"))
+                prediction.units = "meter"
+                prediction.description = "Maximum flow depth."
+                prediction[:,:] = pred
+                
+            self.logger.info(f"NetCDF file created: {pred_file}")
+        
 
     def load_model(self, model_file=None):
         if model_file:

@@ -80,23 +80,5 @@ def main():
     plotter.plot_training_history()
 
 
-    
-def create_output_metadata():
-    # Topomask file is automatically created when the DataReader is created.
-    pois = range(30,45)
-    n_pois = len(pois)
-
-    reader = DataReader(
-        scenarios_file=TRAIN_SCENARIOS,
-        datadir=TRAIN_DIR,
-        topofile=TOPO_FILE,
-        topomask_file=TOPO_MASK,
-        pois=None,
-        shuffle_on_load=False,
-        reload=False
-    )
-    
-    reader.store_grid_info(GRID_INFO_FILE)
-
 if __name__ == "__main__":
     main()

@@ -7,6 +7,10 @@ emulator:
 	@echo "Creating emulator..."
 	poetry run python create_emulator.py 
 
+predictions:
+	@echo "Make predictions..."
+	poetry run python -m predict
+
 tensorboard:
 	@echo "Starting TensorBoard..."
 	poetry run tensorboard --logdir generated/logs --port 6006

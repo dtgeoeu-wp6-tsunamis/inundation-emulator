@@ -142,6 +142,7 @@ class DataReader:
         except (FileNotFoundError, OSError, ValueError):  # Catch file errors
             self.logger.warning(f"{self.topomask_file} not found, not a .npy file, or cannot be loaded. Creating a new mask.")
             self.topomask = self.create_mask()
+            self.save_mask()
     
     def save_mask(self):
         try:
