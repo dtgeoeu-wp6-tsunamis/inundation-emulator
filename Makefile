@@ -1,7 +1,7 @@
 # Makefile
 
 # Declare these targets as phony to indicate they don't produce an actual file
-.PHONY: create_emulator run_tensorboard clean
+.PHONY: create_emulator run_tensorboard clean predictions
 
 emulator:
 	@echo "Creating emulator..."

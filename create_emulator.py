@@ -15,13 +15,16 @@ NAME="emulator"
 RUNDIR = None
 
 TOPO_FILE = '/home/ebr/data/PTHA2020_runs_UMA/Catania/C_CT.grd'
-TOPO_MASK = '/home/ebr/data/PTHA2020_runs_UMA/Catania/ct_mask.npy'  # Needs to be a .npy file. Created from training data if it does not exist.
-GRID_INFO_FILE = "/home/ebr/data/PTHA2020_runs_UMA/Catania/grid_info.json"
-
 TRAIN_SCENARIOS = "/home/ebr/data/PTHA2020_runs_UMA/train_591/scenarios.txt"
 TRAIN_DIR = '/home/ebr/data/PTHA2020_runs_UMA/train_591'
 VALIDATION_SCENARIOS = '/home/ebr/data/PTHA2020_runs_UMA/test/scenarios.txt'
 VALIDATION_DIR = "/home/ebr/data/PTHA2020_runs_UMA/test"
+
+# Optional
+TOPO_MASK = '/home/ebr/data/PTHA2020_runs_UMA/Catania/ct_mask.npy'  # Needs to be a .npy file. Created from training data if it does not exist.
+GRID_INFO_FILE = "/home/ebr/data/PTHA2020_runs_UMA/Catania/grid_info.json"
+#TOPO_MASK = None
+#GRID_INFO_FILE = None
 
 # Test data
 #TEST_DATA = '/home/ebr/projects/inundation-emulator/article_data/bottom_UMAPS_shuf.txt'
@@ -45,9 +48,6 @@ def main():
         shutil.copy(TRAIN_SCENARIOS, os.path.join(RUNDIR, "train_scenarios.txt"))
         shutil.copy(VALIDATION_SCENARIOS, os.path.join(RUNDIR, "validation_scenarios.txt"))
         
-        if os.path.isfile(TOPO_MASK):
-            shutil.copy(TOPO_MASK, os.path.join(RUNDIR, "topomask.npy"))
-
         # Creates topomask on initialization if it does noyt exists.
         reader = DataReader(
             rundir=RUNDIR,
@@ -55,10 +55,19 @@ def main():
             datadir=TRAIN_DIR,
         )
         
-        if os.path.isfile(GRID_INFO_FILE):
+        if TOPO_MASK and os.path.isfile(TOPO_MASK):
+            if not TOPO_MASK.endswith(".npy"):
+                raise ValueError(f"Invalid file extension: {TOPO_MASK}. Expected a .npy file.")
+            shutil.copy(TOPO_MASK, os.path.join(RUNDIR, "topomask.npy"))
+        else: 
+            reader.logger.warning(f"TOPO_MASK ({TOPO_MASK}) not found. Creating a new mask.")
+            reader.create_mask()
+        
+        if GRID_INFO_FILE and os.path.isfile(GRID_INFO_FILE):
             shutil.copy(GRID_INFO_FILE, os.path.join(RUNDIR, "grid_info.json"))
         else: 
-            reader.store_grid_info(GRID_INFO_FILE)
+            reader.logger.warning(f"GRID_INFO_FILE ({GRID_INFO_FILE}) not found. Creating a new mask.")
+            reader.store_grid_info()
     
     
     # All config files should be available in the rundir.
@@ -69,9 +78,9 @@ def main():
                          validation_dir = VALIDATION_DIR,
                          validation_scenarios = os.path.join(RUNDIR, "validation_scenarios.txt"),
                          batch_size=20,
-                         epochs=10,
-                         l2_callback_frequency=5,
-                         save_model_frequency=5)
+                         epochs=300,
+                         l2_callback_frequency=20,
+                         save_model_frequency=50)
     emulator.save_model()
     
     # Create plots.

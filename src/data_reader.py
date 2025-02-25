@@ -42,8 +42,9 @@ class DataReader:
         with Dataset(self.topofile, 'r') as ds:
             self.topography = ds.variables["z"][:,:]
         
-        self.load_or_create_mask()
-        self.load()
+        self.topomask = None
+        if os.path.isfile(self.topomask_file):
+            self.load_mask()
 
     def load(self):
         with open(self.scenarios_file, 'r') as file:
@@ -86,7 +87,7 @@ class DataReader:
                 mask = np.logical_and(self.topography > 0, ~max_height[:,:].mask, max_height[:,:] > deformed_topography)
                 flow_depth[mask] = (max_height[:,:].data - deformed_topography)[mask]
                 
-                if self.topomask_file:
+                if isinstance(self.topomask, np.ndarray):
                     flow_depth = flow_depth[self.topomask]
         else:
             # Return empty arrays if not loaded.
@@ -101,9 +102,12 @@ class DataReader:
     
     def store_grid_info(self):
         """
-        Store information on the output grid.
+        Store information on the output grid based on first file in the scenarios_file.
         """
-        _, input_file = self.get_filenames(self.lines[0].strip())
+        with open(self.scenarios_file, 'r') as file:
+            _, input_file = self.get_filenames(file.readline().strip())
+        
+        #_, input_file = self.get_filenames(self.lines[0].strip())
         
         with Dataset(input_file, "r") as src:
             grid_info = {
@@ -128,11 +132,10 @@ class DataReader:
 
         self.logger.info(f"Grid information saved to {self.grid_info_file}")
 
-    def load_or_create_mask(self):
+    def load_mask(self):
         # Ensure the file has a .npy extension
         if not self.topomask_file.endswith(".npy"):
             raise ValueError(f"Invalid file extension: {self.topomask_file}. Expected a .npy file.")
-
         try:
             if os.path.isfile(self.topomask_file):
                 # Try to load the file
@@ -141,9 +144,8 @@ class DataReader:
                 raise FileNotFoundError  # Explicitly trigger mask creation
         except (FileNotFoundError, OSError, ValueError):  # Catch file errors
             self.logger.warning(f"{self.topomask_file} not found, not a .npy file, or cannot be loaded. Creating a new mask.")
-            self.topomask = self.create_mask()
-            self.save_mask()
-    
+            self.create_mask()
+            
     def save_mask(self):
         try:
             np.save(self.topomask_file, self.topomask)
@@ -160,6 +162,15 @@ class DataReader:
         scenario = next(gen, None)
         if scenario is not None:
             mask = scenario.flow_depth>0.
-            for scenario in gen:
+            for index, scenario in enumerate(gen):
                 mask = np.logical_or(mask, scenario.flow_depth > 0.)
-        return mask
+                if index % 50 == 0:
+                    self.logger.info(f"Processed {index} scenarios.")
+        
+        self.topomask = mask
+        
+        # Save mask to file
+        try:
+            np.save(self.topomask_file, self.topomask)
+        except OSError as e:
+            self.logger.info(f"Error: Could not save {self.topomask_file}. Reason: {e}")

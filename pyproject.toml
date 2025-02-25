@@ -12,6 +12,7 @@ netcdf4 = "^1.7.2"
 matplotlib = "^3.10.0"
 pandas = "^2.2.3"
 xarray = "^2025.1.1"
+cartopy = "^0.24.1"
 
 
 [tool.poetry.group.dev.dependencies]

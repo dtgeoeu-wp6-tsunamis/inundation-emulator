@@ -116,8 +116,6 @@ class Emulator:
                 shuffle_on_load=False, 
                 reload=False
             )
-        readers["train"].store_grid_info()
-        readers["train"].save_mask
         
         datasets = {}
         # Create datasets from generators

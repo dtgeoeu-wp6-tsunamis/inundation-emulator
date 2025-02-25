@@ -9,7 +9,8 @@ from datetime import datetime
 """
 GENERATED_DIR = "/home/ebr/projects/inundation-emulator/generated"
 NAME="emulator"
-RUNDIR ="/home/ebr/projects/inundation-emulator/generated/emulator_20250211_121156"
+#RUNDIR ="/home/ebr/projects/inundation-emulator/generated/emulator_20250211_121156"
+RUNDIR ="/home/ebr/projects/inundation-emulator/generated/emulator_20250225_125539"
 PREDICTION_DIR = "/home/ebr/projects/inundation-emulator/generated/predictions" 
 
 TRAIN_SCENARIOS = "/home/ebr/data/PTHA2020_runs_UMA/train_591/scenarios.txt"
