@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Site specific emulator for tsunami run-up simulations."
 authors = ["Erlend Briseid Storrøsten <erlend.briseid.storrosten@ngi.no>"]
 readme = "README.md"
-
+packages = [
+    { include = "src/" }
+]
 [tool.poetry.dependencies]
 python = "^3.11"
 tensorflow = "^2.18.0"
@@ -13,6 +15,7 @@ matplotlib = "^3.10.0"
 pandas = "^2.2.3"
 xarray = "^2025.1.1"
 cartopy = "^0.24.1"
+ipykernel = "^6.29.5"
 
 
 [tool.poetry.group.dev.dependencies]

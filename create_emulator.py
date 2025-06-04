@@ -10,13 +10,13 @@ from datetime import datetime
 # Instantiate and build the model
 # -emulator$ poetry run python -m create_emulator
 """
-GENERATED_DIR = "/home/ebr/projects/inundation-emulator/generated"
+GENERATED_DIR = "/home/nrr/projects/inundation-emulator/generated"
 NAME="emulator"
 RUNDIR = None
 
 TOPO_FILE = '/home/ebr/data/PTHA2020_runs_UMA/Catania/C_CT.grd'
-TRAIN_SCENARIOS = "/home/ebr/data/PTHA2020_runs_UMA/train_591/scenarios.txt"
-TRAIN_DIR = '/home/ebr/data/PTHA2020_runs_UMA/train_591'
+TRAIN_SCENARIOS = "/home/nrr/projects/inundation-emulator/scenario.txt"
+TRAIN_DIR = '/home/nrr/NGI/P/2022/02/20220296/Calculations/temp_emulator' #4196 set
 VALIDATION_SCENARIOS = '/home/ebr/data/PTHA2020_runs_UMA/test/scenarios.txt'
 VALIDATION_DIR = "/home/ebr/data/PTHA2020_runs_UMA/test"
 
@@ -26,9 +26,9 @@ GRID_INFO_FILE = "/home/ebr/data/PTHA2020_runs_UMA/Catania/grid_info.json"
 #TOPO_MASK = None
 #GRID_INFO_FILE = None
 
-# Test data
-#TEST_DATA = '/home/ebr/projects/inundation-emulator/article_data/bottom_UMAPS_shuf.txt'
-#TEST_DATA_DIR = "/mnt/NGI_disks/ebr/T/Tsunami/PTHA2020_runs_UMA"
+# Test data replace with PTF events from Manuela
+# TEST_DATA = '/home/ebr/projects/inundation-emulator/article_data/bottom_UMAPS_shuf.txt'
+# TEST_DATA_DIR = "/mnt/NGI_disks/ebr/T/Tsunami/PTHA2020_runs_UMA"
 
 #RUNDIR = "/home/ebr/projects/inundation-emulator/generated/emulator_20250123_125901"
 

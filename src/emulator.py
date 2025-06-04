@@ -8,6 +8,17 @@ import numpy as np
 from pandas import DataFrame
 from src.logger_setup import get_logger
 from netCDF4 import Dataset
+import time
+
+@tf.keras.utils.register_keras_serializable()
+def asym_loss(y_true, y_pred): #added to implement asym loss function for underprediction issues
+    error = y_pred - y_true
+    squared_error = tf.square(error)
+
+    # If underprediction (error < 0), scale by y_true; else, use scale = 1.0
+    scale = tf.where(error < 0, tf.abs(y_true) + 1, tf.ones_like(y_true))
+
+    return tf.reduce_mean(squared_error * scale)
 
 class Emulator:
     def __init__(self, generated_dir, rundir, epoch_checkpoint=None):
@@ -140,8 +151,8 @@ class Emulator:
         # Compile the model with a loss function and optimizer
         self.model.compile(
             optimizer=optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999), 
-            loss="mse",
-            metrics=['mse']
+            loss=asym_loss, #was "mse",
+            metrics=['mse'], #for reporting
         )
 
         # Callbacks
@@ -192,7 +203,7 @@ class Emulator:
         )
         
         output_signature = (
-            tf.TensorSpec(shape=(self.n_pois, self.input_time_steps), dtype=tf.float32),                # eta
+            tf.TensorSpec(shape=(self.n_pois, self.input_time_steps), dtype=tf.float32),    # eta
             tf.TensorSpec(shape=(0,), dtype=tf.float32),                                # No flow_depth
             tf.TensorSpec(shape=(), dtype=tf.string)                                # scenario
         )
@@ -207,6 +218,8 @@ class Emulator:
         flow_depths = np.zeros((batch_size, *self.topomask.shape))
 
         for eta, flow_depth, scenario_id in dataset.take(-1):
+            #add wait of 1 sec to avoid segmentation fault
+            time.sleep(1)
             db = eta.shape[0] # Dynamic batch size
             preds[:db, self.topomask] = self.model(eta, training=False)
             #flow_depths[:db,self.topomask] = flow_depth
@@ -224,30 +237,31 @@ class Emulator:
                 dst.scenario = scenario_id_str
                 dst.model_id = self.id
                 dst.description = "Predicted maximal flow depth."
-                
                 for dim_name, dim_size in grid_info["dimensions"].items():
                     dst.createDimension(dim_name, dim_size)
-                
                 for var_name, var_info in grid_info["variables"].items():
                     dst_var = dst.createVariable(var_name, np.dtype(var_info["datatype"]), var_info["dimensions"])
                     for attr, value in var_info["attributes"].items():
                         dst_var.setncattr(attr, value)
                     dst_var[:] = np.array(var_info["data"])
-                
                 # Add predicted
                 prediction = dst.createVariable("predicted", "f4", ("grid_lat", "grid_lon"))
                 prediction.units = "meter"
                 prediction.description = "Maximum flow depth."
                 prediction[:,:] = pred
-                
             self.logger.info(f"NetCDF file created: {pred_file}")
         
+    # def load_model(self, model_file=None):
+    #     if model_file:
+    #         return(models.load_model(model_file))
+    #     else:
+    #         return(models.load_model(self.model_file))
 
     def load_model(self, model_file=None):
         if model_file:
-            return(models.load_model(model_file))
+            return models.load_model(model_file, custom_objects={"asym_loss": asym_loss})
         else:
-            return(models.load_model(self.model_file))
+            return models.load_model(self.model_file, custom_objects={"asym_loss": asym_loss})
 
     def save_model(self):
         self.model.save(self.model_file)

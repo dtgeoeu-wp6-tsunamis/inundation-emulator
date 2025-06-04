@@ -69,7 +69,8 @@ class DataReader:
         filename_ts, filename_CT = self.get_filenames(scenario)
         # Initialize the eta array with the proper shape and type
         with Dataset(filename_ts) as ds:
-            eta = ds.variables["eta"][:, self.pois]
+            # eta = ds.variables["eta"][:, self.pois]  
+            eta = ds.variables["eta"][:481, self.pois] #Hardcoded for first 4 hours even if we have more duration of input
         
         if self.target:
             # Initialize flow_depth and deformed_topography
