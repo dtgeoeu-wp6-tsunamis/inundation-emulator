@@ -24,3 +24,27 @@ Training results for the different runs are visualized at "http://127.0.0.1:6006
 
 ## Notes.
 Data folder: T:\Tsunami\PTHA2020_runs_UMA
+Test folder: P:\2022\02\20220296\Calculations\temp_emulator
+
+## Setup for poetry and running the emulator wiht make commands
+
+clone this repository
+```terminal
+git clone https://github.com/dtgeoeu-wp6-tsunamis/inundation-emulator.git
+cd inundation-emulator/
+```
+install poetry and dependencies
+```terminal
+curl -sSL https://install.python-poetry.org | python3 -
+poetry install --no-root
+rm poetry.lock
+rm -rf .venv
+poetry install
+```
+
+#make commands to train and predict with emulator
+```terminal
+make emulator
+make predictions
+make tensorboard
+```
