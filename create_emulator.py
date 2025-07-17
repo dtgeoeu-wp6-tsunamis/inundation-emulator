@@ -13,6 +13,7 @@ from datetime import datetime
 GENERATED_DIR = "/home/nrr/projects/inundation-emulator/generated"
 NAME="emulator"
 RUNDIR = None
+POIS = range(30, 45)  # Points of Interest, can be modified based on the site
 
 TOPO_FILE = '/home/ebr/data/PTHA2020_runs_UMA/Catania/C_CT.grd'
 TRAIN_SCENARIOS = "/home/nrr/projects/inundation-emulator/scenario.txt"
@@ -71,7 +72,7 @@ def main():
     
     
     # All config files should be available in the rundir.
-    emulator = Emulator(GENERATED_DIR, RUNDIR)
+    emulator = Emulator(GENERATED_DIR, RUNDIR, POIS)
     
     emulator.train_model(train_dir = TRAIN_DIR, 
                          train_scenarios = os.path.join(RUNDIR, "train_scenarios.txt"),

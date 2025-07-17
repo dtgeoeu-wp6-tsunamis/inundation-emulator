@@ -21,7 +21,7 @@ def asym_loss(y_true, y_pred): #added to implement asym loss function for underp
     return tf.reduce_mean(squared_error * scale)
 
 class Emulator:
-    def __init__(self, generated_dir, rundir, epoch_checkpoint=None):
+    def __init__(self, generated_dir, rundir, pois, epoch_checkpoint=None):
         self.rundir=rundir
         self.generated_dir = generated_dir
         self.topofile = os.path.join(self.rundir, "topography.grd") 
@@ -33,7 +33,7 @@ class Emulator:
         
         # Input-Output dimensions 
         # Should be stored in a config file created by datareader.
-        self.pois = range(30,45)
+        self.pois = pois
         self.n_pois = len(self.pois)
         self.input_time_steps = 481
         self.grid_lat = self.grid_info['dimensions']['grid_lat']
