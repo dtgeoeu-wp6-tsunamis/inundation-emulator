@@ -42,7 +42,7 @@ rm -rf .venv
 poetry install
 ```
 
-#make commands to train and predict with emulator
+make commands to train and predict with emulator
 ```terminal
 make emulator
 make predictions
