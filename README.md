@@ -33,6 +33,7 @@ clone this repository
 git clone https://github.com/dtgeoeu-wp6-tsunamis/inundation-emulator.git
 cd inundation-emulator/
 ```
+
 install poetry and dependencies
 ```terminal
 curl -sSL https://install.python-poetry.org | python3 -
@@ -40,6 +41,12 @@ poetry install --no-root
 rm poetry.lock
 rm -rf .venv
 poetry install
+```
+
+to find and activate poetry env
+```terminal
+poetry env info --path
+source [PATH_TO_VENV]/bin/activate
 ```
 
 make commands to train and predict with emulator

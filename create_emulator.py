@@ -22,7 +22,7 @@ VALIDATION_SCENARIOS = '/home/ebr/data/PTHA2020_runs_UMA/test/scenarios.txt'
 VALIDATION_DIR = "/home/ebr/data/PTHA2020_runs_UMA/test"
 
 # Optional
-TOPO_MASK = '/home/ebr/data/PTHA2020_runs_UMA/Catania/ct_mask.npy'  # Needs to be a .npy file. Created from training data if it does not exist.
+TOPO_MASK = '/home/ebr/data/PTHA2020_runs_UMA/Catania/ct_mask.npy'  # Needs to be a .npy file. Created from training data if set to NONE.
 GRID_INFO_FILE = "/home/ebr/data/PTHA2020_runs_UMA/Catania/grid_info.json"
 #TOPO_MASK = None
 #GRID_INFO_FILE = None
